@@ -47,8 +47,9 @@ local function findFileInVault(name)
     local out, err
 
     if runtime.GOOS == "windows" then
-        local cmd = 'dir /s /b "' .. root .. '\\' .. name .. '" 2>nul'
-        out, err = shell.ExecCommand("cmd", "/c", cmd)
+        -- Use where.exe (a real executable, not a shell builtin)
+        -- Each arg passed separately avoids quoting issues with spaces in paths
+        out, err = shell.ExecCommand("where", "/r", root, name)
     else
         local cmd = 'find "' .. root .. '" -name "' .. name .. '" -type f 2>/dev/null'
         out, err = shell.ExecCommand("sh", "-c", cmd)
@@ -141,6 +142,15 @@ local function getLinkUnderCursor(bp)
 end
 
 -- ---------------------------------------------------------------------------
+-- saveIfModified: save the current buffer if it has unsaved changes
+-- ---------------------------------------------------------------------------
+local function saveIfModified(bp)
+    if bp.Buf:Modified() then
+        bp:Save()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- pushHistory: save current position onto the history stack
 -- ---------------------------------------------------------------------------
 local function pushHistory(bp)
@@ -179,7 +189,8 @@ function followLink(bp)
         f:Close()
     end
 
-    -- Save current position before navigating
+    -- Save and record position before navigating
+    saveIfModified(bp)
     pushHistory(bp)
 
     local buf, err = buffer.NewBufferFromFile(fullPath)
@@ -203,6 +214,8 @@ function goBack(bp)
 
     local entry = history[#history]
     history[#history] = nil
+
+    saveIfModified(bp)
 
     local buf, err = buffer.NewBufferFromFile(entry.path)
     if err ~= nil then
@@ -257,6 +270,7 @@ function openNote(bp)
         fullPath = filepath.Join(root, output)
     end
 
+    saveIfModified(bp)
     pushHistory(bp)
 
     local buf, bufErr = buffer.NewBufferFromFile(fullPath)
