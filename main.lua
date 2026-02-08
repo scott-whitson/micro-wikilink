@@ -223,10 +223,48 @@ function goBack(bp)
 end
 
 -- ---------------------------------------------------------------------------
--- openLink: placeholder for future functionality
+-- openNote: fuzzy-find and open a note from the vault using fzf
 -- ---------------------------------------------------------------------------
-function openLink(bp)
-    micro.InfoBar():Message("Not yet implemented")
+function openNote(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    local cmd
+    if runtime.GOOS == "windows" then
+        cmd = 'cd /d "' .. root .. '" && dir /s /b *.md | fzf'
+    else
+        cmd = 'cd "' .. root .. '" && find . -name "*.md" -type f | fzf'
+    end
+
+    local output, err = shell.RunInteractiveShell(cmd, false, true)
+
+    if err ~= nil then
+        -- User likely pressed Escape in fzf
+        return
+    end
+
+    output = strings.TrimSpace(output)
+    if output == "" then return end
+
+    -- On Windows, dir /s /b returns absolute paths; on Unix, find returns relative
+    local fullPath
+    if runtime.GOOS == "windows" then
+        fullPath = output
+    else
+        fullPath = filepath.Join(root, output)
+    end
+
+    pushHistory(bp)
+
+    local buf, bufErr = buffer.NewBufferFromFile(fullPath)
+    if bufErr ~= nil then
+        micro.InfoBar():Message("Error opening file: " .. tostring(bufErr))
+        return
+    end
+    bp:OpenBuffer(buf)
 end
 
 -- ---------------------------------------------------------------------------
@@ -235,7 +273,7 @@ end
 function init()
     config.MakeCommand("wikilink.follow", followLink, config.NoComplete)
     config.MakeCommand("wikilink.back", goBack, config.NoComplete)
-    config.MakeCommand("wikilink.open", openLink, config.NoComplete)
+    config.MakeCommand("wikilink.open", openNote, config.NoComplete)
 
     config.TryBindKey("Alt-g", "command:wikilink.follow", false)
     config.TryBindKey("Alt-b", "command:wikilink.back", false)
