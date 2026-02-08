@@ -234,9 +234,9 @@ function openNote(bp)
 
     local cmd
     if runtime.GOOS == "windows" then
-        cmd = 'cd /d "' .. root .. '" && dir /s /b *.md | fzf'
+        cmd = 'cmd /c dir /s /b "' .. root .. '\\*.md" | fzf'
     else
-        cmd = 'cd "' .. root .. '" && find . -name "*.md" -type f | fzf'
+        cmd = 'find "' .. root .. '" -name "*.md" -type f | fzf'
     end
 
     local output, err = shell.RunInteractiveShell(cmd, false, true)
