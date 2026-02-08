@@ -1,0 +1,7 @@
+filetype: markdown
+
+detect:
+    filename: "\\.(md|mkd|mkdn|markdown)$"
+
+rules:
+    - special: "\\[\\[[^\\]]+\\]\\]"

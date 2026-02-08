@@ -279,5 +279,7 @@ function init()
     config.TryBindKey("Alt-b", "command:wikilink.back", false)
     config.TryBindKey("Alt-o", "command:wikilink.open", false)
 
+    config.AddRuntimeFile("wikilink", config.RTSyntax, "wikilink.yaml")
+
     micro.Log("wikilink plugin v" .. VERSION .. " loaded")
 end
