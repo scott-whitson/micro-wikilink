@@ -18,7 +18,7 @@ Navigate between markdown files in a vault directory using `[[link]]` syntax, ju
 ### From source
 
 ```bash
-git clone https://github.com/scott/micro-wikilink.git
+git clone https://github.com/scott-whitson/micro-wikilink.git
 ```
 
 Copy the plugin into micro's plugin directory:
