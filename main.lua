@@ -283,6 +283,62 @@ function openNote(bp)
 end
 
 -- ---------------------------------------------------------------------------
+-- imageLink: copy an image to vault media dir and insert markdown link
+-- ---------------------------------------------------------------------------
+function imageLink(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    micro.InfoBar():Prompt("Image path: ", "", "file", function(input, cancelled)
+        if cancelled or input == nil or input == "" then
+            return
+        end
+
+        local srcPath = strings.TrimSpace(input)
+
+        -- Extract the original filename
+        local name = srcPath
+        local slashIdx = strings.LastIndex(srcPath, "/")
+        if slashIdx >= 0 then
+            name = string.sub(srcPath, slashIdx + 2)
+        end
+        -- Also handle backslash for Windows paths
+        local bslashIdx = strings.LastIndex(name, "\\")
+        if bslashIdx >= 0 then
+            name = string.sub(name, bslashIdx + 2)
+        end
+
+        -- Create date prefix
+        local time = import("time")
+        local now = time.Now()
+        local dateStr = now:Format("2006-01-02")
+        local destName = dateStr .. "-" .. name
+
+        -- Ensure media directory exists
+        local mediaDir = filepath.Join(root, "media")
+        shell.ExecCommand("sh", "-c", 'mkdir -p "' .. mediaDir .. '"')
+
+        -- Copy the file
+        local destPath = filepath.Join(mediaDir, destName)
+        local _, cpErr = shell.ExecCommand("sh", "-c", 'cp "' .. srcPath .. '" "' .. destPath .. '"')
+        if cpErr ~= nil then
+            micro.InfoBar():Message("Error copying image: " .. tostring(cpErr))
+            return
+        end
+
+        -- Insert markdown image link at cursor
+        local cursor = bp.Buf:GetActiveCursor()
+        local linkText = "![" .. name .. "](media/" .. destName .. ")"
+        bp.Buf:Insert(buffer.Loc(cursor.X, cursor.Y), linkText)
+
+        micro.InfoBar():Message("Image linked: media/" .. destName)
+    end)
+end
+
+-- ---------------------------------------------------------------------------
 -- vaultSearch: full-text search across vault using grep + fzf
 -- ---------------------------------------------------------------------------
 function vaultSearch(bp)
@@ -408,6 +464,7 @@ function init()
     config.MakeCommand("wikilink.path", copyPath, config.NoComplete)
     config.MakeCommand("wikilink.random", randomNote, config.NoComplete)
     config.MakeCommand("wikilink.search", vaultSearch, config.NoComplete)
+    config.MakeCommand("wikilink.image", imageLink, config.NoComplete)
 
     config.TryBindKey("Alt-g", "command:wikilink.follow", false)
     config.TryBindKey("Alt-b", "command:wikilink.back", false)
@@ -415,6 +472,7 @@ function init()
     config.TryBindKey("Alt-p", "command:wikilink.path", false)
     config.TryBindKey("Alt-r", "command:wikilink.random", false)
     config.TryBindKey("Alt-s", "command:wikilink.search", false)
+    config.TryBindKey("Alt-i", "command:wikilink.image", false)
 
     config.AddRuntimeFile("wikilink", config.RTSyntax, "wikilink.yaml")
     config.AddRuntimeFile("wikilink", config.RTHelp, "help/wikilink.md")
