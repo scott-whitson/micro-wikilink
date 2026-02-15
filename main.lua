@@ -506,8 +506,11 @@ function vaultSearch(bp)
         return
     end
 
-    -- Use grep -rn for recursive search with line numbers, piped to fzf
-    local cmd = 'grep -rn --include="*.md" "" "' .. root .. '" | fzf --delimiter=: --preview="head -n {2} {1} | tail -n 20"'
+    -- Use fzf with reload to run grep on each keystroke (avoids loading all lines upfront)
+    local cmd = 'fzf --disabled --ansi --prompt="Search: " ' ..
+        '--bind \'change:reload:grep -rn --include="*.md" {q} "' .. root .. '" 2>/dev/null || true\' ' ..
+        '--delimiter=: --preview="head -n {2} {1} 2>/dev/null | tail -n 20" ' ..
+        '--preview-window=up:20:wrap'
 
     local output, err = shell.RunInteractiveShell(cmd, false, true)
 
