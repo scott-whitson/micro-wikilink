@@ -283,6 +283,79 @@ function openNote(bp)
 end
 
 -- ---------------------------------------------------------------------------
+-- showBacklinks: show all notes that link to the current note in a VSplit
+-- ---------------------------------------------------------------------------
+function showBacklinks(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    -- Get current note name (basename without .md)
+    local path = bp.Buf.Path
+    local name = path
+    local slashIdx = strings.LastIndex(path, "/")
+    if slashIdx >= 0 then
+        name = string.sub(path, slashIdx + 2)
+    end
+    -- Remove .md extension
+    if strings.HasSuffix(name, ".md") then
+        name = string.sub(name, 1, #name - 3)
+    end
+
+    if name == "" then
+        micro.InfoBar():Message("Cannot determine current note name")
+        return
+    end
+
+    -- Search for [[notename]] in all vault .md files using grep
+    local pattern = '\\[\\[' .. name .. '\\]\\]'
+    local cmd = 'grep -rl "' .. pattern .. '" "' .. root .. '" --include="*.md" 2>/dev/null'
+    local out, err = shell.ExecCommand("sh", "-c", cmd)
+
+    local content = "# Backlinks to [[" .. name .. "]]\n\n"
+
+    if out == nil or strings.TrimSpace(out) == "" then
+        content = content .. "(no backlinks found)\n"
+    else
+        out = strings.TrimSpace(out)
+        -- Split by newline and format each result
+        local remaining = out
+        while remaining ~= "" do
+            local nlIdx = strings.Index(remaining, "\n")
+            local line
+            if nlIdx >= 0 then
+                line = string.sub(remaining, 1, nlIdx)
+                remaining = string.sub(remaining, nlIdx + 2)
+            else
+                line = remaining
+                remaining = ""
+            end
+            line = strings.TrimSpace(line)
+            if line ~= "" then
+                -- Extract just the filename for display
+                local lineSlashIdx = strings.LastIndex(line, "/")
+                local displayName = line
+                if lineSlashIdx >= 0 then
+                    displayName = string.sub(line, lineSlashIdx + 2)
+                end
+                content = content .. "- [[" .. string.sub(displayName, 1, #displayName - 3) .. "]]  " .. line .. "\n"
+            end
+        end
+    end
+
+    content = content .. "\n---\nAlt-g to follow a link | Alt-b to go back\n"
+
+    -- Create a scratch buffer and show in a VSplit
+    local backlinkBuf = buffer.NewBuffer(content, "backlinks")
+    backlinkBuf.Type.Readonly = true
+
+    -- Open in a vertical split (true = right side)
+    bp:VSplitIndex(backlinkBuf, true)
+end
+
+-- ---------------------------------------------------------------------------
 -- imageLink: copy an image to vault media dir and insert markdown link
 -- ---------------------------------------------------------------------------
 function imageLink(bp)
@@ -465,6 +538,7 @@ function init()
     config.MakeCommand("wikilink.random", randomNote, config.NoComplete)
     config.MakeCommand("wikilink.search", vaultSearch, config.NoComplete)
     config.MakeCommand("wikilink.image", imageLink, config.NoComplete)
+    config.MakeCommand("wikilink.backlinks", showBacklinks, config.NoComplete)
 
     config.TryBindKey("Alt-g", "command:wikilink.follow", false)
     config.TryBindKey("Alt-b", "command:wikilink.back", false)
@@ -473,6 +547,7 @@ function init()
     config.TryBindKey("Alt-r", "command:wikilink.random", false)
     config.TryBindKey("Alt-s", "command:wikilink.search", false)
     config.TryBindKey("Alt-i", "command:wikilink.image", false)
+    config.TryBindKey("Alt-l", "command:wikilink.backlinks", false)
 
     config.AddRuntimeFile("wikilink", config.RTSyntax, "wikilink.yaml")
     config.AddRuntimeFile("wikilink", config.RTHelp, "help/wikilink.md")
