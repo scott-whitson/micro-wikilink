@@ -1,10 +1,10 @@
 [{
     "Name": "wikilink",
-    "Description": "Obsidian-style [[wikilinks]] for navigating between markdown files in a vault",
+    "Description": "Obsidian-style vault toolkit: [[wikilinks]], search, backlinks, image linking, and more",
     "Website": "https://github.com/scott-whitson/micro-wikilink",
-    "Tags": ["wikilink", "markdown", "wiki", "obsidian", "notes"],
+    "Tags": ["wikilink", "markdown", "wiki", "obsidian", "notes", "vault", "backlinks"],
     "Versions": [{
-        "Version": "0.1.0",
+        "Version": "0.2.0",
         "Require": {
             "micro": ">=2.0.0"
         }

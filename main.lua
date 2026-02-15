@@ -1,4 +1,4 @@
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 local micro   = import("micro")
 local config  = import("micro/config")
@@ -262,13 +262,8 @@ function openNote(bp)
     output = strings.TrimSpace(output)
     if output == "" then return end
 
-    -- On Windows, dir /s /b returns absolute paths; on Unix, find returns relative
-    local fullPath
-    if runtime.GOOS == "windows" then
-        fullPath = output
-    else
-        fullPath = filepath.Join(root, output)
-    end
+    -- Both Windows dir /s /b and Unix find with absolute root return absolute paths
+    local fullPath = output
 
     saveIfModified(bp)
     pushHistory(bp)
@@ -282,16 +277,383 @@ function openNote(bp)
 end
 
 -- ---------------------------------------------------------------------------
+-- showBacklinks: show all notes that link to the current note in a VSplit
+-- ---------------------------------------------------------------------------
+function showBacklinks(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    -- Get current note name (basename without .md)
+    local path = bp.Buf.Path
+    local name = path
+    local slashIdx = strings.LastIndex(path, "/")
+    if slashIdx >= 0 then
+        name = string.sub(path, slashIdx + 2)
+    end
+    -- Remove .md extension
+    if strings.HasSuffix(name, ".md") then
+        name = string.sub(name, 1, #name - 3)
+    end
+
+    if name == "" then
+        micro.InfoBar():Message("Cannot determine current note name")
+        return
+    end
+
+    -- Search for [[notename]] in all vault .md files using grep -F (literal match)
+    local pattern = '[[' .. name .. ']]'
+    local cmd = 'grep -Frl "' .. pattern .. '" "' .. root .. '" --include="*.md" 2>/dev/null'
+    local out, err = shell.ExecCommand("sh", "-c", cmd)
+
+    local content = "# Backlinks to [[" .. name .. "]]\n\n"
+
+    if out == nil or strings.TrimSpace(out) == "" then
+        content = content .. "(no backlinks found)\n"
+    else
+        out = strings.TrimSpace(out)
+        -- Split by newline and format each result
+        local remaining = out
+        while remaining ~= "" do
+            local nlIdx = strings.Index(remaining, "\n")
+            local line
+            if nlIdx >= 0 then
+                line = string.sub(remaining, 1, nlIdx)
+                remaining = string.sub(remaining, nlIdx + 2)
+            else
+                line = remaining
+                remaining = ""
+            end
+            line = strings.TrimSpace(line)
+            if line ~= "" then
+                -- Extract just the filename for display
+                local lineSlashIdx = strings.LastIndex(line, "/")
+                local displayName = line
+                if lineSlashIdx >= 0 then
+                    displayName = string.sub(line, lineSlashIdx + 2)
+                end
+                content = content .. "- [[" .. string.sub(displayName, 1, #displayName - 3) .. "]]  " .. line .. "\n"
+            end
+        end
+    end
+
+    content = content .. "\n---\nAlt-g to follow a link | Alt-b to go back\n"
+
+    -- Create a scratch buffer and show in a VSplit
+    local backlinkBuf = buffer.NewBuffer(content, "backlinks")
+    backlinkBuf.Type.Readonly = true
+
+    -- Open in a vertical split (true = right side)
+    bp:VSplitIndex(backlinkBuf, true)
+end
+
+-- ---------------------------------------------------------------------------
+-- showUnlinked: show all notes with no incoming links
+-- ---------------------------------------------------------------------------
+function showUnlinked(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    -- Step 1: Get all wikilink targets mentioned anywhere in the vault
+    local linkCmd = 'grep -roh "\\[\\[[^]]*\\]\\]" "' .. root .. '" --include="*.md" 2>/dev/null | sort -u'
+    local linkOut, _ = shell.ExecCommand("sh", "-c", linkCmd)
+
+    -- Build a set of linked note names (lowercased for case-insensitive matching)
+    local linkedSet = {}
+    if linkOut ~= nil and linkOut ~= "" then
+        local remaining = strings.TrimSpace(linkOut)
+        while remaining ~= "" do
+            local nlIdx = strings.Index(remaining, "\n")
+            local line
+            if nlIdx >= 0 then
+                line = string.sub(remaining, 1, nlIdx)
+                remaining = string.sub(remaining, nlIdx + 2)
+            else
+                line = remaining
+                remaining = ""
+            end
+            line = strings.TrimSpace(line)
+            -- Strip [[ and ]]
+            if #line > 4 then
+                local linkName = string.sub(line, 3, #line - 2)
+                linkedSet[string.lower(linkName)] = true
+            end
+        end
+    end
+
+    -- Step 2: Get all .md files in the vault
+    local fileCmd = 'find "' .. root .. '" -name "*.md" -type f 2>/dev/null'
+    local fileOut, _ = shell.ExecCommand("sh", "-c", fileCmd)
+
+    local content = "# Unlinked Notes\n\nNotes with no incoming [[links]] from other notes:\n\n"
+    local count = 0
+
+    if fileOut ~= nil and fileOut ~= "" then
+        local remaining = strings.TrimSpace(fileOut)
+        while remaining ~= "" do
+            local nlIdx = strings.Index(remaining, "\n")
+            local line
+            if nlIdx >= 0 then
+                line = string.sub(remaining, 1, nlIdx)
+                remaining = string.sub(remaining, nlIdx + 2)
+            else
+                line = remaining
+                remaining = ""
+            end
+            line = strings.TrimSpace(line)
+            if line ~= "" then
+                -- Extract basename without .md
+                local lineSlashIdx = strings.LastIndex(line, "/")
+                local basename = line
+                if lineSlashIdx >= 0 then
+                    basename = string.sub(line, lineSlashIdx + 2)
+                end
+                if strings.HasSuffix(basename, ".md") then
+                    basename = string.sub(basename, 1, #basename - 3)
+                end
+
+                -- Check if this note is linked from anywhere
+                if not linkedSet[string.lower(basename)] then
+                    content = content .. "- [[" .. basename .. "]]  " .. line .. "\n"
+                    count = count + 1
+                end
+            end
+        end
+    end
+
+    if count == 0 then
+        content = content .. "(all notes have at least one incoming link)\n"
+    else
+        content = content .. "\n(" .. count .. " unlinked notes)\n"
+    end
+
+    content = content .. "\n---\nAlt-g to follow a link | Alt-b to go back\n"
+
+    local unlinkBuf = buffer.NewBuffer(content, "unlinked")
+    unlinkBuf.Type.Readonly = true
+
+    bp:VSplitIndex(unlinkBuf, true)
+end
+
+-- ---------------------------------------------------------------------------
+-- imageLink: copy an image to vault media dir and insert markdown link
+-- ---------------------------------------------------------------------------
+function imageLink(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    micro.InfoBar():Prompt("Image path: ", "", "Open", nil, function(input, cancelled)
+        if cancelled or input == nil or input == "" then
+            return
+        end
+
+        local srcPath = strings.TrimSpace(input)
+
+        -- Strip surrounding quotes if present
+        if string.sub(srcPath, 1, 1) == '"' and string.sub(srcPath, #srcPath, #srcPath) == '"' then
+            srcPath = string.sub(srcPath, 2, #srcPath - 1)
+        end
+
+        -- Convert Windows paths to WSL paths (C:\Users\... -> /mnt/c/Users/...)
+        if #srcPath >= 3 and string.sub(srcPath, 2, 3) == ":\\" then
+            local drive = string.lower(string.sub(srcPath, 1, 1))
+            local rest = string.sub(srcPath, 4)
+            rest = rest:gsub("\\", "/")
+            srcPath = "/mnt/" .. drive .. "/" .. rest
+        end
+
+        -- Extract the original filename
+        local name = srcPath
+        local slashIdx = strings.LastIndex(srcPath, "/")
+        if slashIdx >= 0 then
+            name = string.sub(srcPath, slashIdx + 2)
+        end
+        -- Also handle backslash for Windows paths
+        local bslashIdx = strings.LastIndex(name, "\\")
+        if bslashIdx >= 0 then
+            name = string.sub(name, bslashIdx + 2)
+        end
+
+        -- Create date prefix
+        local time = import("time")
+        local now = time.Now()
+        local dateStr = now:Format("2006-01-02")
+        local destName = dateStr .. "-" .. name
+
+        -- Ensure media directory exists
+        local mediaDir = filepath.Join(root, "media")
+        shell.ExecCommand("sh", "-c", 'mkdir -p "' .. mediaDir .. '"')
+
+        -- Copy the file
+        local destPath = filepath.Join(mediaDir, destName)
+        local _, cpErr = shell.ExecCommand("sh", "-c", 'cp "' .. srcPath .. '" "' .. destPath .. '"')
+        if cpErr ~= nil then
+            micro.InfoBar():Message("Error copying image: " .. tostring(cpErr))
+            return
+        end
+
+        -- Insert markdown image link at cursor
+        local cursor = bp.Buf:GetActiveCursor()
+        local linkText = "![" .. name .. "](media/" .. destName .. ")"
+        bp.Buf:Insert(buffer.Loc(cursor.X, cursor.Y), linkText)
+
+        micro.InfoBar():Message("Image linked: media/" .. destName)
+    end)
+end
+
+-- ---------------------------------------------------------------------------
+-- vaultSearch: full-text search across vault using grep + fzf
+-- ---------------------------------------------------------------------------
+function vaultSearch(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    -- Use fzf with reload to run grep on each keystroke (avoids loading all lines upfront)
+    local cmd = 'fzf --disabled --ansi --prompt="Search: " ' ..
+        '--bind \'change:reload:grep -rn --include="*.md" {q} "' .. root .. '" 2>/dev/null || true\' ' ..
+        '--delimiter=: --preview="head -n {2} {1} 2>/dev/null | tail -n 20" ' ..
+        '--preview-window=up:20:wrap'
+
+    local output, err = shell.RunInteractiveShell(cmd, false, true)
+
+    if err ~= nil then
+        -- User likely pressed Escape in fzf
+        return
+    end
+
+    output = strings.TrimSpace(output)
+    if output == "" then return end
+
+    -- Parse output: /path/to/file.md:42:matching line content
+    local colonIdx = strings.Index(output, ":")
+    if colonIdx < 0 then return end
+
+    local filePath = string.sub(output, 1, colonIdx)
+    local rest = string.sub(output, colonIdx + 2)
+
+    local lineNum = 0
+    local colonIdx2 = strings.Index(rest, ":")
+    if colonIdx2 >= 0 then
+        local lineStr = string.sub(rest, 1, colonIdx2)
+        lineNum = tonumber(lineStr) or 0
+    end
+
+    saveIfModified(bp)
+    pushHistory(bp)
+
+    local buf, bufErr = buffer.NewBufferFromFile(filePath)
+    if bufErr ~= nil then
+        micro.InfoBar():Message("Error opening file: " .. tostring(bufErr))
+        return
+    end
+    bp:OpenBuffer(buf)
+
+    -- Jump to the matched line (lineNum is 1-based from grep, cursor.Y is 0-based)
+    if lineNum > 0 then
+        local cursor = bp.Buf:GetActiveCursor()
+        cursor.Y = lineNum - 1
+        cursor.X = 0
+        cursor:Relocate()
+        bp:Center()
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- randomNote: open a random markdown file from the vault
+-- ---------------------------------------------------------------------------
+function randomNote(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    local cmd
+    if runtime.GOOS == "windows" then
+        cmd = 'powershell -Command "Get-ChildItem -Path \'' .. root .. '\' -Recurse -Filter *.md | Get-Random | Select-Object -ExpandProperty FullName"'
+    else
+        cmd = 'find "' .. root .. '" -name "*.md" -type f | shuf -n 1'
+    end
+
+    local out, err = shell.ExecCommand("sh", "-c", cmd)
+    if err ~= nil or out == nil or out == "" then
+        micro.InfoBar():Message("No notes found in vault")
+        return
+    end
+
+    local fullPath = strings.TrimSpace(out)
+    if fullPath == "" then return end
+
+    saveIfModified(bp)
+    pushHistory(bp)
+
+    local buf, bufErr = buffer.NewBufferFromFile(fullPath)
+    if bufErr ~= nil then
+        micro.InfoBar():Message("Error opening file: " .. tostring(bufErr))
+        return
+    end
+    bp:OpenBuffer(buf)
+
+    -- Extract just the filename for the message
+    local name = fullPath
+    local slashIdx = strings.LastIndex(fullPath, "/")
+    if slashIdx >= 0 then
+        name = string.sub(fullPath, slashIdx + 2)
+    end
+    micro.InfoBar():Message("Random note: " .. name)
+end
+
+-- ---------------------------------------------------------------------------
+-- copyPath: copy the current file's absolute path to clipboard
+-- ---------------------------------------------------------------------------
+function copyPath(bp)
+    local path = bp.Buf.AbsPath
+    if path == "" or path == nil then
+        path = bp.Buf.Path
+    end
+
+    -- micro/clipboard is not exposed to Lua plugins, so use shell commands
+    -- clip.exe works best on WSL2 (xclip hangs due to forking behavior)
+    local escaped = path:gsub("'", "'\\''")
+    shell.ExecCommand("sh", "-c", "printf '%s' '" .. escaped .. "' | clip.exe 2>/dev/null || printf '%s' '" .. escaped .. "' | xclip -selection clipboard -i </dev/null 2>/dev/null || printf '%s' '" .. escaped .. "' | xsel --clipboard 2>/dev/null")
+
+    micro.InfoBar():Message("Copied: " .. path)
+end
+
+-- ---------------------------------------------------------------------------
 -- init: register commands and key bindings
 -- ---------------------------------------------------------------------------
 function init()
     config.MakeCommand("wikilink.follow", followLink, config.NoComplete)
     config.MakeCommand("wikilink.back", goBack, config.NoComplete)
     config.MakeCommand("wikilink.open", openNote, config.NoComplete)
+    config.MakeCommand("wikilink.path", copyPath, config.NoComplete)
+    config.MakeCommand("wikilink.random", randomNote, config.NoComplete)
+    config.MakeCommand("wikilink.search", vaultSearch, config.NoComplete)
+    config.MakeCommand("wikilink.image", imageLink, config.NoComplete)
+    config.MakeCommand("wikilink.backlinks", showBacklinks, config.NoComplete)
+    config.MakeCommand("wikilink.unlinked", showUnlinked, config.NoComplete)
 
     config.TryBindKey("Alt-g", "command:wikilink.follow", false)
     config.TryBindKey("Alt-b", "command:wikilink.back", false)
     config.TryBindKey("Alt-o", "command:wikilink.open", false)
+    config.TryBindKey("Alt-p", "command:wikilink.path", false)
+    config.TryBindKey("Alt-r", "command:wikilink.random", false)
+    config.TryBindKey("Alt-s", "command:wikilink.search", false)
+    config.TryBindKey("Alt-i", "command:wikilink.image", false)
+    config.TryBindKey("Alt-l", "command:wikilink.backlinks", false)
+    config.TryBindKey("Alt-u", "command:wikilink.unlinked", false)
 
     config.AddRuntimeFile("wikilink", config.RTSyntax, "wikilink.yaml")
     config.AddRuntimeFile("wikilink", config.RTHelp, "help/wikilink.md")
