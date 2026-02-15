@@ -608,8 +608,9 @@ function copyPath(bp)
     end
 
     -- micro/clipboard is not exposed to Lua plugins, so use shell commands
+    -- clip.exe works best on WSL2 (xclip hangs due to forking behavior)
     local escaped = path:gsub("'", "'\\''")
-    shell.ExecCommand("sh", "-c", "printf '%s' '" .. escaped .. "' | xclip -selection clipboard 2>/dev/null || printf '%s' '" .. escaped .. "' | xsel --clipboard 2>/dev/null || printf '%s' '" .. escaped .. "' | wl-copy 2>/dev/null")
+    shell.ExecCommand("sh", "-c", "printf '%s' '" .. escaped .. "' | clip.exe 2>/dev/null || printf '%s' '" .. escaped .. "' | xclip -selection clipboard -i </dev/null 2>/dev/null || printf '%s' '" .. escaped .. "' | xsel --clipboard 2>/dev/null")
 
     micro.InfoBar():Message("Copied: " .. path)
 end
