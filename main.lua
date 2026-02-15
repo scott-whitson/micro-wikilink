@@ -450,7 +450,7 @@ function imageLink(bp)
         return
     end
 
-    micro.InfoBar():Prompt("Image path: ", "", "file", function(input, cancelled)
+    micro.InfoBar():Prompt("Image path: ", "", "Open", nil, function(input, cancelled)
         if cancelled or input == nil or input == "" then
             return
         end
