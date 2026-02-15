@@ -356,6 +356,97 @@ function showBacklinks(bp)
 end
 
 -- ---------------------------------------------------------------------------
+-- showUnlinked: show all notes with no incoming links
+-- ---------------------------------------------------------------------------
+function showUnlinked(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    -- Step 1: Get all wikilink targets mentioned anywhere in the vault
+    local linkCmd = 'grep -roh "\\[\\[[^]]*\\]\\]" "' .. root .. '" --include="*.md" 2>/dev/null | sort -u'
+    local linkOut, _ = shell.ExecCommand("sh", "-c", linkCmd)
+
+    -- Build a set of linked note names (lowercased for case-insensitive matching)
+    local linkedSet = {}
+    if linkOut ~= nil and linkOut ~= "" then
+        local remaining = strings.TrimSpace(linkOut)
+        while remaining ~= "" do
+            local nlIdx = strings.Index(remaining, "\n")
+            local line
+            if nlIdx >= 0 then
+                line = string.sub(remaining, 1, nlIdx)
+                remaining = string.sub(remaining, nlIdx + 2)
+            else
+                line = remaining
+                remaining = ""
+            end
+            line = strings.TrimSpace(line)
+            -- Strip [[ and ]]
+            if #line > 4 then
+                local linkName = string.sub(line, 3, #line - 2)
+                linkedSet[string.lower(linkName)] = true
+            end
+        end
+    end
+
+    -- Step 2: Get all .md files in the vault
+    local fileCmd = 'find "' .. root .. '" -name "*.md" -type f 2>/dev/null'
+    local fileOut, _ = shell.ExecCommand("sh", "-c", fileCmd)
+
+    local content = "# Unlinked Notes\n\nNotes with no incoming [[links]] from other notes:\n\n"
+    local count = 0
+
+    if fileOut ~= nil and fileOut ~= "" then
+        local remaining = strings.TrimSpace(fileOut)
+        while remaining ~= "" do
+            local nlIdx = strings.Index(remaining, "\n")
+            local line
+            if nlIdx >= 0 then
+                line = string.sub(remaining, 1, nlIdx)
+                remaining = string.sub(remaining, nlIdx + 2)
+            else
+                line = remaining
+                remaining = ""
+            end
+            line = strings.TrimSpace(line)
+            if line ~= "" then
+                -- Extract basename without .md
+                local lineSlashIdx = strings.LastIndex(line, "/")
+                local basename = line
+                if lineSlashIdx >= 0 then
+                    basename = string.sub(line, lineSlashIdx + 2)
+                end
+                if strings.HasSuffix(basename, ".md") then
+                    basename = string.sub(basename, 1, #basename - 3)
+                end
+
+                -- Check if this note is linked from anywhere
+                if not linkedSet[string.lower(basename)] then
+                    content = content .. "- [[" .. basename .. "]]  " .. line .. "\n"
+                    count = count + 1
+                end
+            end
+        end
+    end
+
+    if count == 0 then
+        content = content .. "(all notes have at least one incoming link)\n"
+    else
+        content = content .. "\n(" .. count .. " unlinked notes)\n"
+    end
+
+    content = content .. "\n---\nAlt-g to follow a link | Alt-b to go back\n"
+
+    local unlinkBuf = buffer.NewBuffer(content, "unlinked")
+    unlinkBuf.Type.Readonly = true
+
+    bp:VSplitIndex(unlinkBuf, true)
+end
+
+-- ---------------------------------------------------------------------------
 -- imageLink: copy an image to vault media dir and insert markdown link
 -- ---------------------------------------------------------------------------
 function imageLink(bp)
@@ -539,6 +630,7 @@ function init()
     config.MakeCommand("wikilink.search", vaultSearch, config.NoComplete)
     config.MakeCommand("wikilink.image", imageLink, config.NoComplete)
     config.MakeCommand("wikilink.backlinks", showBacklinks, config.NoComplete)
+    config.MakeCommand("wikilink.unlinked", showUnlinked, config.NoComplete)
 
     config.TryBindKey("Alt-g", "command:wikilink.follow", false)
     config.TryBindKey("Alt-b", "command:wikilink.back", false)
@@ -548,6 +640,7 @@ function init()
     config.TryBindKey("Alt-s", "command:wikilink.search", false)
     config.TryBindKey("Alt-i", "command:wikilink.image", false)
     config.TryBindKey("Alt-l", "command:wikilink.backlinks", false)
+    config.TryBindKey("Alt-u", "command:wikilink.unlinked", false)
 
     config.AddRuntimeFile("wikilink", config.RTSyntax, "wikilink.yaml")
     config.AddRuntimeFile("wikilink", config.RTHelp, "help/wikilink.md")
