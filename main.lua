@@ -8,6 +8,7 @@ local os      = import("os")
 local filepath = import("filepath")
 local strings = import("strings")
 local runtime = import("runtime")
+local clip    = import("micro/clipboard")
 
 -- Navigation history stack: each entry is {path, line, col}
 local history = {}
@@ -282,16 +283,32 @@ function openNote(bp)
 end
 
 -- ---------------------------------------------------------------------------
+-- copyPath: copy the current file's absolute path to clipboard
+-- ---------------------------------------------------------------------------
+function copyPath(bp)
+    local path = bp.Buf.AbsPath
+    if path == "" or path == nil then
+        path = bp.Buf.Path
+    end
+
+    clip.WriteAll(path, "clipboard")
+
+    micro.InfoBar():Message("Copied: " .. path)
+end
+
+-- ---------------------------------------------------------------------------
 -- init: register commands and key bindings
 -- ---------------------------------------------------------------------------
 function init()
     config.MakeCommand("wikilink.follow", followLink, config.NoComplete)
     config.MakeCommand("wikilink.back", goBack, config.NoComplete)
     config.MakeCommand("wikilink.open", openNote, config.NoComplete)
+    config.MakeCommand("wikilink.path", copyPath, config.NoComplete)
 
     config.TryBindKey("Alt-g", "command:wikilink.follow", false)
     config.TryBindKey("Alt-b", "command:wikilink.back", false)
     config.TryBindKey("Alt-o", "command:wikilink.open", false)
+    config.TryBindKey("Alt-p", "command:wikilink.path", false)
 
     config.AddRuntimeFile("wikilink", config.RTSyntax, "wikilink.yaml")
     config.AddRuntimeFile("wikilink", config.RTHelp, "help/wikilink.md")
