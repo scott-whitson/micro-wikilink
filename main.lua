@@ -283,6 +283,63 @@ function openNote(bp)
 end
 
 -- ---------------------------------------------------------------------------
+-- vaultSearch: full-text search across vault using grep + fzf
+-- ---------------------------------------------------------------------------
+function vaultSearch(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    -- Use grep -rn for recursive search with line numbers, piped to fzf
+    local cmd = 'grep -rn --include="*.md" "" "' .. root .. '" | fzf --delimiter=: --preview="head -n {2} {1} | tail -n 20"'
+
+    local output, err = shell.RunInteractiveShell(cmd, false, true)
+
+    if err ~= nil then
+        -- User likely pressed Escape in fzf
+        return
+    end
+
+    output = strings.TrimSpace(output)
+    if output == "" then return end
+
+    -- Parse output: /path/to/file.md:42:matching line content
+    local colonIdx = strings.Index(output, ":")
+    if colonIdx < 0 then return end
+
+    local filePath = string.sub(output, 1, colonIdx)
+    local rest = string.sub(output, colonIdx + 2)
+
+    local lineNum = 0
+    local colonIdx2 = strings.Index(rest, ":")
+    if colonIdx2 >= 0 then
+        local lineStr = string.sub(rest, 1, colonIdx2)
+        lineNum = tonumber(lineStr) or 0
+    end
+
+    saveIfModified(bp)
+    pushHistory(bp)
+
+    local buf, bufErr = buffer.NewBufferFromFile(filePath)
+    if bufErr ~= nil then
+        micro.InfoBar():Message("Error opening file: " .. tostring(bufErr))
+        return
+    end
+    bp:OpenBuffer(buf)
+
+    -- Jump to the matched line (lineNum is 1-based from grep, cursor.Y is 0-based)
+    if lineNum > 0 then
+        local cursor = bp.Buf:GetActiveCursor()
+        cursor.Y = lineNum - 1
+        cursor.X = 0
+        cursor:Relocate()
+        bp:Center()
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- randomNote: open a random markdown file from the vault
 -- ---------------------------------------------------------------------------
 function randomNote(bp)
@@ -350,12 +407,14 @@ function init()
     config.MakeCommand("wikilink.open", openNote, config.NoComplete)
     config.MakeCommand("wikilink.path", copyPath, config.NoComplete)
     config.MakeCommand("wikilink.random", randomNote, config.NoComplete)
+    config.MakeCommand("wikilink.search", vaultSearch, config.NoComplete)
 
     config.TryBindKey("Alt-g", "command:wikilink.follow", false)
     config.TryBindKey("Alt-b", "command:wikilink.back", false)
     config.TryBindKey("Alt-o", "command:wikilink.open", false)
     config.TryBindKey("Alt-p", "command:wikilink.path", false)
     config.TryBindKey("Alt-r", "command:wikilink.random", false)
+    config.TryBindKey("Alt-s", "command:wikilink.search", false)
 
     config.AddRuntimeFile("wikilink", config.RTSyntax, "wikilink.yaml")
     config.AddRuntimeFile("wikilink", config.RTHelp, "help/wikilink.md")
