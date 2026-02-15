@@ -1,8 +1,8 @@
 # micro-wikilink
 
-Obsidian-style `[[wikilinks]]` for the [micro](https://micro-editor.github.io/) terminal text editor.
+Obsidian-style vault toolkit for the [micro](https://micro-editor.github.io/) terminal text editor.
 
-Navigate between markdown files in a vault directory using `[[link]]` syntax, just like Obsidian — but from your terminal.
+Navigate `[[wikilinks]]`, search your vault, view backlinks, link images, find orphaned notes — all from your terminal.
 
 ## Features
 
@@ -10,6 +10,12 @@ Navigate between markdown files in a vault directory using `[[link]]` syntax, ju
 - **Auto-create** — If the linked file doesn't exist, it's created automatically
 - **Back navigation** — Press `Alt-b` to return to the previous file (cursor position restored)
 - **Fuzzy finder** — Press `Alt-o` to search all notes in your vault with fzf
+- **Vault search** — Press `Alt-s` for full-text search across your vault (grep + fzf)
+- **Copy path** — Press `Alt-p` to copy the current file's path to clipboard
+- **Random note** — Press `Alt-r` to open a random note from your vault
+- **Image linking** — Press `Alt-i` to copy an image to `media/` and insert a markdown link
+- **Backlinks** — Press `Alt-l` to see all notes that link to the current note
+- **Unlinked notes** — Press `Alt-u` to find orphaned notes with no incoming links
 - **Syntax highlighting** — `[[wikilinks]]` are highlighted in markdown files
 - **Auto-save** — Modified files are saved automatically when navigating
 
@@ -44,7 +50,9 @@ ln -s /path/to/micro-wikilink ~/.config/micro/plug/wikilink
 ### Requirements
 
 - [micro](https://micro-editor.github.io/) >= 2.0.0
-- [fzf](https://github.com/junegunn/fzf) (only needed for `Alt-o` fuzzy finder)
+- [fzf](https://github.com/junegunn/fzf) (for `Alt-o` fuzzy finder and `Alt-s` vault search)
+- `grep` (for vault search, backlinks, and unlinked notes)
+- `shuf` (for random note — part of GNU coreutils)
 
 ## Setup
 
@@ -82,6 +90,33 @@ Press `Alt-b` to return to the previous file. Your cursor position is restored e
 
 Press `Alt-o` to launch fzf with all `.md` files in your vault. Select a note to open it. Press `Escape` to cancel.
 
+### Vault search (`Alt-s`)
+
+Press `Alt-s` for full-text search across all markdown files in your vault. Uses grep piped to fzf with a preview window. Selecting a result opens the file at the matched line.
+
+### Copy file path (`Alt-p`)
+
+Press `Alt-p` to copy the current file's absolute path to the system clipboard.
+
+### Random note (`Alt-r`)
+
+Press `Alt-r` to open a random markdown file from your vault.
+
+### Image linking (`Alt-i`)
+
+Press `Alt-i` and enter the path to an image file. The plugin will:
+
+1. Copy the image to `{vault}/media/` with a date prefix (e.g., `2026-02-15-screenshot.png`)
+2. Insert a markdown image link at the cursor: `![screenshot.png](media/2026-02-15-screenshot.png)`
+
+### Backlinks (`Alt-l`)
+
+Press `Alt-l` to open a side panel showing all notes that contain a `[[link]]` to the current note. Links in the panel are followable with `Alt-g`.
+
+### Unlinked notes (`Alt-u`)
+
+Press `Alt-u` to find orphaned notes — markdown files that no other note links to. Useful for finding forgotten or disconnected notes in your vault.
+
 ### Help
 
 Inside micro, press `Ctrl-e` and run:
@@ -92,11 +127,17 @@ help wikilink
 
 ## Keybindings
 
-| Key     | Command            | Action                                |
-|---------|--------------------|---------------------------------------|
-| `Alt-g` | `wikilink.follow`  | Follow the `[[link]]` under cursor    |
-| `Alt-b` | `wikilink.back`    | Go back to previous file              |
-| `Alt-o` | `wikilink.open`    | Fuzzy-find a note in the vault        |
+| Key     | Command              | Action                                    |
+|---------|----------------------|-------------------------------------------|
+| `Alt-g` | `wikilink.follow`    | Follow the `[[link]]` under cursor        |
+| `Alt-b` | `wikilink.back`      | Go back to previous file                  |
+| `Alt-o` | `wikilink.open`      | Fuzzy-find a note in the vault            |
+| `Alt-s` | `wikilink.search`    | Full-text search across the vault         |
+| `Alt-p` | `wikilink.path`      | Copy current file path to clipboard       |
+| `Alt-r` | `wikilink.random`    | Open a random note                        |
+| `Alt-i` | `wikilink.image`     | Link an image to media/ dir              |
+| `Alt-l` | `wikilink.backlinks` | Show backlinks to current note            |
+| `Alt-u` | `wikilink.unlinked`  | Show notes with no incoming links         |
 
 Keybindings won't overwrite your existing bindings. To customize them, add entries to `~/.config/micro/bindings.json`:
 
@@ -104,7 +145,13 @@ Keybindings won't overwrite your existing bindings. To customize them, add entri
 {
     "Alt-g": "command:wikilink.follow",
     "Alt-b": "command:wikilink.back",
-    "Alt-o": "command:wikilink.open"
+    "Alt-o": "command:wikilink.open",
+    "Alt-s": "command:wikilink.search",
+    "Alt-p": "command:wikilink.path",
+    "Alt-r": "command:wikilink.random",
+    "Alt-i": "command:wikilink.image",
+    "Alt-l": "command:wikilink.backlinks",
+    "Alt-u": "command:wikilink.unlinked"
 }
 ```
 
@@ -124,8 +171,8 @@ Keybindings won't overwrite your existing bindings. To customize them, add entri
 
 ## Platform support
 
-- **Windows** — Fully tested
-- **Linux** — Should work (uses `find` and `sh` for file operations)
+- **Linux** — Fully tested
+- **Windows** — Supported (uses `where /r` and PowerShell for file operations)
 - **macOS** — Should work (same as Linux)
 
 ## License

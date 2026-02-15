@@ -1,23 +1,19 @@
 # Wikilink Plugin
 
-Navigate between markdown files using Obsidian-style [[wikilinks]].
-
-## Usage
-
-Type [[note name]] in any markdown file. Place your cursor inside the
-brackets and press Alt-g to follow the link. The plugin will search your
-vault directory for a file named "note name.md" and open it. If the file
-does not exist, it will be created at the vault root.
-
-Press Alt-b to go back to the previous file (with cursor position restored).
-
-Press Alt-o to open any note from the vault using fzf fuzzy finder.
+Obsidian-style vault toolkit for micro. Navigate [[wikilinks]], search
+your vault, view backlinks, link images, and find orphaned notes.
 
 ## Commands
 
-- wikilink.follow: Follow the [[link]] under the cursor (Alt-g)
-- wikilink.back: Go back to the previous file (Alt-b)
-- wikilink.open: Fuzzy-find and open a note from the vault (Alt-o)
+- wikilink.follow:    Follow the [[link]] under the cursor (Alt-g)
+- wikilink.back:      Go back to the previous file (Alt-b)
+- wikilink.open:      Fuzzy-find and open a note from the vault (Alt-o)
+- wikilink.search:    Full-text search across the vault (Alt-s)
+- wikilink.path:      Copy current file path to clipboard (Alt-p)
+- wikilink.random:    Open a random note from the vault (Alt-r)
+- wikilink.image:     Link an image — copies to media/ and inserts markdown (Alt-i)
+- wikilink.backlinks: Show all notes linking to this note (Alt-l)
+- wikilink.unlinked:  Show notes with no incoming links (Alt-u)
 
 ## Settings
 
@@ -28,4 +24,6 @@ Press Alt-o to open any note from the vault using fzf fuzzy finder.
 
 ## Requirements
 
-- fzf (for the wikilink.open command only)
+- fzf (for wikilink.open and wikilink.search)
+- grep (for wikilink.search, wikilink.backlinks, wikilink.unlinked)
+- shuf (for wikilink.random — part of GNU coreutils)
