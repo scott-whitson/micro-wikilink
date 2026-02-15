@@ -263,13 +263,8 @@ function openNote(bp)
     output = strings.TrimSpace(output)
     if output == "" then return end
 
-    -- On Windows, dir /s /b returns absolute paths; on Unix, find returns relative
-    local fullPath
-    if runtime.GOOS == "windows" then
-        fullPath = output
-    else
-        fullPath = filepath.Join(root, output)
-    end
+    -- Both Windows dir /s /b and Unix find with absolute root return absolute paths
+    local fullPath = output
 
     saveIfModified(bp)
     pushHistory(bp)
@@ -309,9 +304,9 @@ function showBacklinks(bp)
         return
     end
 
-    -- Search for [[notename]] in all vault .md files using grep
-    local pattern = '\\[\\[' .. name .. '\\]\\]'
-    local cmd = 'grep -rl "' .. pattern .. '" "' .. root .. '" --include="*.md" 2>/dev/null'
+    -- Search for [[notename]] in all vault .md files using grep -F (literal match)
+    local pattern = '[[' .. name .. ']]'
+    local cmd = 'grep -Frl "' .. pattern .. '" "' .. root .. '" --include="*.md" 2>/dev/null'
     local out, err = shell.ExecCommand("sh", "-c", cmd)
 
     local content = "# Backlinks to [[" .. name .. "]]\n\n"
