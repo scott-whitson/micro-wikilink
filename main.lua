@@ -457,6 +457,19 @@ function imageLink(bp)
 
         local srcPath = strings.TrimSpace(input)
 
+        -- Strip surrounding quotes if present
+        if string.sub(srcPath, 1, 1) == '"' and string.sub(srcPath, #srcPath, #srcPath) == '"' then
+            srcPath = string.sub(srcPath, 2, #srcPath - 1)
+        end
+
+        -- Convert Windows paths to WSL paths (C:\Users\... -> /mnt/c/Users/...)
+        if #srcPath >= 3 and string.sub(srcPath, 2, 3) == ":\\" then
+            local drive = string.lower(string.sub(srcPath, 1, 1))
+            local rest = string.sub(srcPath, 4)
+            rest = rest:gsub("\\", "/")
+            srcPath = "/mnt/" .. drive .. "/" .. rest
+        end
+
         -- Extract the original filename
         local name = srcPath
         local slashIdx = strings.LastIndex(srcPath, "/")
