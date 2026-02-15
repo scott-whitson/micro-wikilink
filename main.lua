@@ -8,7 +8,6 @@ local os      = import("os")
 local filepath = import("filepath")
 local strings = import("strings")
 local runtime = import("runtime")
-local clip    = import("micro/clipboard")
 
 -- Navigation history stack: each entry is {path, line, col}
 local history = {}
@@ -608,7 +607,9 @@ function copyPath(bp)
         path = bp.Buf.Path
     end
 
-    clip.WriteAll(path, "clipboard")
+    -- micro/clipboard is not exposed to Lua plugins, so use shell commands
+    local escaped = path:gsub("'", "'\\''")
+    shell.ExecCommand("sh", "-c", "printf '%s' '" .. escaped .. "' | xclip -selection clipboard 2>/dev/null || printf '%s' '" .. escaped .. "' | xsel --clipboard 2>/dev/null || printf '%s' '" .. escaped .. "' | wl-copy 2>/dev/null")
 
     micro.InfoBar():Message("Copied: " .. path)
 end
