@@ -283,6 +283,51 @@ function openNote(bp)
 end
 
 -- ---------------------------------------------------------------------------
+-- randomNote: open a random markdown file from the vault
+-- ---------------------------------------------------------------------------
+function randomNote(bp)
+    local root = getVaultRoot()
+    if root == "" then
+        micro.InfoBar():Message("Vault directory not set")
+        return
+    end
+
+    local cmd
+    if runtime.GOOS == "windows" then
+        cmd = 'powershell -Command "Get-ChildItem -Path \'' .. root .. '\' -Recurse -Filter *.md | Get-Random | Select-Object -ExpandProperty FullName"'
+    else
+        cmd = 'find "' .. root .. '" -name "*.md" -type f | shuf -n 1'
+    end
+
+    local out, err = shell.ExecCommand("sh", "-c", cmd)
+    if err ~= nil or out == nil or out == "" then
+        micro.InfoBar():Message("No notes found in vault")
+        return
+    end
+
+    local fullPath = strings.TrimSpace(out)
+    if fullPath == "" then return end
+
+    saveIfModified(bp)
+    pushHistory(bp)
+
+    local buf, bufErr = buffer.NewBufferFromFile(fullPath)
+    if bufErr ~= nil then
+        micro.InfoBar():Message("Error opening file: " .. tostring(bufErr))
+        return
+    end
+    bp:OpenBuffer(buf)
+
+    -- Extract just the filename for the message
+    local name = fullPath
+    local slashIdx = strings.LastIndex(fullPath, "/")
+    if slashIdx >= 0 then
+        name = string.sub(fullPath, slashIdx + 2)
+    end
+    micro.InfoBar():Message("Random note: " .. name)
+end
+
+-- ---------------------------------------------------------------------------
 -- copyPath: copy the current file's absolute path to clipboard
 -- ---------------------------------------------------------------------------
 function copyPath(bp)
@@ -304,11 +349,13 @@ function init()
     config.MakeCommand("wikilink.back", goBack, config.NoComplete)
     config.MakeCommand("wikilink.open", openNote, config.NoComplete)
     config.MakeCommand("wikilink.path", copyPath, config.NoComplete)
+    config.MakeCommand("wikilink.random", randomNote, config.NoComplete)
 
     config.TryBindKey("Alt-g", "command:wikilink.follow", false)
     config.TryBindKey("Alt-b", "command:wikilink.back", false)
     config.TryBindKey("Alt-o", "command:wikilink.open", false)
     config.TryBindKey("Alt-p", "command:wikilink.path", false)
+    config.TryBindKey("Alt-r", "command:wikilink.random", false)
 
     config.AddRuntimeFile("wikilink", config.RTSyntax, "wikilink.yaml")
     config.AddRuntimeFile("wikilink", config.RTHelp, "help/wikilink.md")
