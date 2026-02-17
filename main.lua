@@ -1,4 +1,4 @@
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 local micro   = import("micro")
 local config  = import("micro/config")
@@ -11,6 +11,11 @@ local runtime = import("runtime")
 
 -- Navigation history stack: each entry is {path, line, col}
 local history = {}
+
+-- Auto-reload state
+local watchJob = nil       -- Background stat-polling job
+local watchPath = ""       -- Absolute path of the file being watched
+local justSaved = false    -- Flag to suppress reload after user saves
 
 -- ---------------------------------------------------------------------------
 -- preinit: register plugin options before anything else
@@ -161,6 +166,99 @@ local function pushHistory(bp)
         col  = cursor.X,
     }
     history[#history + 1] = entry
+end
+
+-- ---------------------------------------------------------------------------
+-- Auto-reload: watch the current file for external changes
+-- ---------------------------------------------------------------------------
+
+-- Reload the watched file, preserving cursor position
+local function reloadWatchedFile()
+    local tabs = micro.Tabs()
+    local tab = tabs.List[tabs.Active + 1]
+    for i = 1, #tab.Panes do
+        local p = tab.Panes[i]
+        local absPath = p.Buf.AbsPath
+        if absPath == watchPath then
+            -- Don't reload if user has unsaved changes
+            if p.Buf:Modified() then
+                micro.InfoBar():Message("File changed externally (you have unsaved changes)")
+                return
+            end
+
+            -- Save cursor position
+            local cursor = p.Buf:GetActiveCursor()
+            local savedLine = cursor.Y
+            local savedCol = cursor.X
+
+            -- Reload from disk
+            local buf, err = buffer.NewBufferFromFile(watchPath)
+            if err ~= nil then return end
+            p:OpenBuffer(buf)
+
+            -- Restore cursor position (clamp if file got shorter)
+            cursor = p.Buf:GetActiveCursor()
+            local maxLine = p.Buf:LinesNum() - 1
+            if savedLine > maxLine then savedLine = maxLine end
+            cursor.Y = savedLine
+            cursor.X = savedCol
+            cursor:Relocate()
+            p:Center()
+
+            micro.InfoBar():Message("Reloaded (external change)")
+            return
+        end
+    end
+end
+
+-- Start watching a file for external modifications
+local function startFileWatch(path)
+    -- Stop existing watcher
+    if watchJob ~= nil then
+        shell.JobStop(watchJob)
+        watchJob = nil
+    end
+
+    if path == "" or path == nil then return end
+    watchPath = path
+    justSaved = false
+
+    -- Poll stat every second, output only when mtime changes
+    local cmd = 'prev=""; while true; do cur=$(stat -c %Y "' .. path .. '" 2>/dev/null); '
+        .. 'if [ -n "$prev" ] && [ "$cur" != "$prev" ]; then echo changed; fi; '
+        .. 'prev="$cur"; sleep 1; done'
+
+    watchJob = shell.JobSpawn("sh", {"-c", cmd},
+        function(output)
+            -- File changed on disk
+            if justSaved then
+                justSaved = false
+                return
+            end
+            reloadWatchedFile()
+        end,
+        nil,
+        function(output)
+            watchJob = nil
+        end
+    )
+end
+
+-- onSave: suppress reload when the user themselves saves
+function onSave(bp)
+    local absPath = bp.Buf.AbsPath
+    if absPath ~= "" and absPath == watchPath then
+        justSaved = true
+    end
+end
+
+-- onBufferOpen: start watching each non-scratch file that gets opened
+function onBufferOpen(buf)
+    if buf.Type.Scratch then return end
+    local path = buf.AbsPath
+    if path ~= "" and path ~= nil then
+        startFileWatch(path)
+    end
 end
 
 -- ---------------------------------------------------------------------------
