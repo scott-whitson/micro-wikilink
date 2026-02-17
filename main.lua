@@ -244,7 +244,59 @@ local function startFileWatch(path)
     )
 end
 
--- onSave: suppress reload when the user themselves saves
+-- ---------------------------------------------------------------------------
+-- Autosave: save vault files automatically after edits
+-- ---------------------------------------------------------------------------
+
+local function autosaveIfVault(bp)
+    if bp.Buf.Type.Scratch then return end
+    if not bp.Buf:Modified() then return end
+    local path = bp.Buf.AbsPath
+    if path == "" or path == nil then return end
+    local vault = getVaultRoot()
+    if vault == "" then return end
+    if strings.HasPrefix(path, vault) then
+        bp:Save()
+    end
+end
+
+function onRune(bp, r)
+    autosaveIfVault(bp)
+end
+
+function onInsertNewline(bp)
+    autosaveIfVault(bp)
+end
+
+function onBackspace(bp)
+    autosaveIfVault(bp)
+end
+
+function onDelete(bp)
+    autosaveIfVault(bp)
+end
+
+function onPaste(bp)
+    autosaveIfVault(bp)
+end
+
+function onCut(bp)
+    autosaveIfVault(bp)
+end
+
+function onCutLine(bp)
+    autosaveIfVault(bp)
+end
+
+function onUndo(bp)
+    autosaveIfVault(bp)
+end
+
+function onRedo(bp)
+    autosaveIfVault(bp)
+end
+
+-- onSave: suppress reload when the user themselves saves (or autosave fires)
 function onSave(bp)
     local absPath = bp.Buf.AbsPath
     if absPath ~= "" and absPath == watchPath then
